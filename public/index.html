@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Team Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="page-header">
+    <h1>Team Dashboard</h1>
+  </header>
+
+  <main>
+    <section class="panel losses-panel" aria-labelledby="losses-heading">
+      <div class="panel-head">
+        <h2 id="losses-heading">Recent stock take losses</h2>
+        <button id="refresh-losses" class="btn btn-ghost" type="button">Refresh</button>
+      </div>
+
+      <div id="losses-body">
+        <p class="muted">Loading…</p>
+      </div>
+    </section>
+
+    <section class="panel board-panel" aria-labelledby="board-heading">
+      <div class="panel-head">
+        <h2 id="board-heading">To-do board</h2>
+      </div>
+
+      <form id="add-task-form" class="add-task-form">
+        <input
+          id="task-title"
+          type="text"
+          placeholder="Add an item…"
+          maxlength="200"
+          required
+        />
+        <input
+          id="task-author"
+          type="text"
+          placeholder="Your name (optional)"
+          maxlength="60"
+        />
+        <button type="submit" class="btn btn-primary">Add</button>
+      </form>
+
+      <div class="board" id="board">
+        <div class="column" data-status="todo">
+          <h3>To Do <span class="count" id="count-todo">0</span></h3>
+          <div class="card-list" data-status="todo"></div>
+        </div>
+        <div class="column" data-status="doing">
+          <h3>Doing <span class="count" id="count-doing">0</span></h3>
+          <div class="card-list" data-status="doing"></div>
+        </div>
+        <div class="column" data-status="done">
+          <h3>Done <span class="count" id="count-done">0</span></h3>
+          <div class="card-list" data-status="done"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
