@@ -11,6 +11,7 @@
   --radius: 10px;
   --todo: #5e6c84;
   --doing: #b45309;
+  --blocked: #c0392b;
   --done: #1e8e5a;
 }
 
@@ -118,6 +119,52 @@ main {
   font-weight: 700;
   color: var(--loss);
 }
+
+.losses-net {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.net-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.net-badge.net-negative { background: rgba(192, 57, 43, 0.12); color: var(--loss); }
+.net-badge.net-positive { background: rgba(30, 142, 90, 0.14); color: var(--done); }
+
+.worst-skus {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background: rgba(192, 57, 43, 0.04);
+}
+
+.worst-skus h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.sku-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  padding: 3px 0;
+}
+
+.sku-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sku-amount { color: var(--loss); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .losses-table {
   width: 100%;
@@ -233,11 +280,15 @@ main {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 14px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
+  .board { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 520px) {
   .board { grid-template-columns: 1fr; }
 }
 
@@ -291,6 +342,7 @@ main {
 }
 
 .column[data-status="doing"] .card { border-left-color: var(--doing); }
+.column[data-status="blocked"] .card { border-left-color: var(--blocked); }
 .column[data-status="done"] .card { border-left-color: var(--done); }
 
 .card.dragging { opacity: 0.5; }
@@ -305,6 +357,16 @@ main {
   font-size: 11px;
   color: var(--muted);
   margin-bottom: 8px;
+}
+
+.blocked-reason {
+  font-size: 12px;
+  color: var(--blocked);
+  background: rgba(192, 57, 43, 0.1);
+  border-radius: 6px;
+  padding: 4px 7px;
+  margin-bottom: 8px;
+  word-break: break-word;
 }
 
 .card-actions {

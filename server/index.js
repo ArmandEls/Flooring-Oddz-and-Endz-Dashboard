@@ -37,14 +37,17 @@ app.post('/api/tasks', async (req, res) => {
 });
 
 app.patch('/api/tasks/:id', async (req, res) => {
-  const { status } = req.body || {};
+  const { status, reason } = req.body || {};
   try {
-    const task = await store.updateTaskStatus(req.params.id, status);
+    const task = await store.updateTaskStatus(req.params.id, status, reason);
     if (!task) return res.status(404).json({ error: 'not found' });
     res.json({ task });
   } catch (err) {
     if (err.code === 'invalid_status') {
-      return res.status(400).json({ error: 'status must be one of todo, doing, done' });
+      return res.status(400).json({ error: `status must be one of ${store.STATUSES.join(', ')}` });
+    }
+    if (err.code === 'blocked_reason_required') {
+      return res.status(400).json({ error: 'a reason is required to mark an item blocked' });
     }
     throw err;
   }

@@ -10,7 +10,7 @@ const DATA_DIR = process.env.DATA_DIR
   : path.join(__dirname, '..', 'data');
 const DATA_FILE = path.join(DATA_DIR, 'tasks.json');
 
-const STATUSES = ['todo', 'doing', 'done'];
+const STATUSES = ['todo', 'doing', 'blocked', 'done'];
 const FREQUENCIES = ['none', 'daily', 'weekly', 'monthly'];
 
 function ensureDataFile() {
@@ -104,6 +104,7 @@ function addTask({ title, addedBy, frequency }) {
       addedBy: addedBy ? String(addedBy).trim().slice(0, 60) : '',
       frequency: FREQUENCIES.includes(frequency) ? frequency : 'none',
       lastCompletedAt: null,
+      blockedReason: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -113,10 +114,15 @@ function addTask({ title, addedBy, frequency }) {
   });
 }
 
-function updateTaskStatus(id, status) {
+function updateTaskStatus(id, status, reason) {
   if (!STATUSES.includes(status)) {
     const err = new Error('invalid_status');
     err.code = 'invalid_status';
+    throw err;
+  }
+  if (status === 'blocked' && !(reason && String(reason).trim())) {
+    const err = new Error('blocked_reason_required');
+    err.code = 'blocked_reason_required';
     throw err;
   }
   return withLock(() => {
@@ -126,6 +132,7 @@ function updateTaskStatus(id, status) {
     const now = new Date().toISOString();
     task.status = status;
     task.lastCompletedAt = status === 'done' ? now : null;
+    task.blockedReason = status === 'blocked' ? String(reason).trim().slice(0, 300) : null;
     task.updatedAt = now;
     writeAll(data);
     return task;

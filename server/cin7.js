@@ -2,7 +2,11 @@ const axios = require('axios');
 
 const BASE_URL = 'https://inventory.dearsystems.com/ExternalApi/v2';
 const PAGE_SIZE = 100;
-const MAX_DETAIL_FETCHES = 30;
+// Safety ceiling only — the real number of completed stock adjustments in a
+// 180-day window has been observed around 440 for this account. Set well
+// above that so nothing in the window gets silently dropped; "truncated"
+// only fires if volume genuinely exceeds this.
+const MAX_DETAIL_FETCHES = 600;
 // A large stock take can touch 50+ distinct products; resolving every one's
 // category would mean 50+ extra API calls for a single entry. Sample a
 // handful instead — real stock takes are almost always run per product
@@ -13,6 +17,8 @@ const MAX_PRODUCTS_PER_ENTRY = 3;
 const REQUEST_SPACING_MS = 1000;
 const MAX_RETRIES = 5;
 const MAX_LOOKBACK_DAYS = 180; // never look back more than 6 months
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const WORST_SKUS_LIMIT = 8;
 const UNCATEGORIZED = 'Uncategorized';
 
 function sleep(ms) {
@@ -62,15 +68,24 @@ function isConfigured() {
 }
 
 // A stock adjustment's Transactions carry the $ movement in/out of "Stock on
-// Hand". A negative Amount is inventory being written DOWN (a loss); positive
-// is stock being added. We sum only the negative side per adjustment.
-function lossFromTransactions(transactions) {
-  if (!Array.isArray(transactions)) return 0;
-  const negatives = transactions
-    .map((t) => Number(t.Amount))
-    .filter((n) => Number.isFinite(n) && n < 0);
-  if (negatives.length === 0) return 0;
-  return -negatives.reduce((sum, n) => sum + n, 0);
+// Hand". Negative amounts are inventory written DOWN (a loss); positive
+// amounts are stock added/corrected up (a gain). We track both sides so the
+// dashboard can show the net effect, not just the loss side.
+function lossAndGainFromTransactions(transactions) {
+  if (!Array.isArray(transactions)) return { loss: 0, gain: 0 };
+  let loss = 0;
+  let gain = 0;
+  for (const t of transactions) {
+    const amount = Number(t.Amount);
+    if (!Number.isFinite(amount)) continue;
+    if (amount < 0) loss -= amount;
+    else gain += amount;
+  }
+  return { loss, gain };
+}
+
+function lineItemsFor(detail) {
+  return (detail.ExistingStockLines || []).length ? detail.ExistingStockLines : detail.NewStockLines || [];
 }
 
 // Cin7 doesn't expose category on the adjustment/stock-take record itself,
@@ -94,11 +109,7 @@ async function resolveCategory(http, productId, cache) {
 // Distributes an adjustment's total $ loss evenly across the distinct
 // categories its line items touch, so per-category totals still add up to
 // the true total loss instead of double-counting mixed stock takes.
-async function categorizeEntry(http, detail, productCategoryCache) {
-  const lines = (detail.ExistingStockLines || []).length
-    ? detail.ExistingStockLines
-    : detail.NewStockLines || [];
-
+async function categorizeEntry(http, lines, productCategoryCache) {
   const allProductIds = [...new Set(lines.map((l) => l.ProductID).filter(Boolean))];
   if (allProductIds.length === 0) return [UNCATEGORIZED];
 
@@ -115,6 +126,23 @@ async function categorizeEntry(http, detail, productCategoryCache) {
   return [...categories];
 }
 
+// SKU/ProductName are already present on each line item in the detail
+// response, so highlighting the worst SKUs needs no extra API calls — just
+// split the entry's loss evenly across the products it touched.
+function addToSkuTotals(skuTotals, lines, lossAmount) {
+  if (lines.length === 0) return;
+  const share = lossAmount / lines.length;
+  for (const line of lines) {
+    const sku = line.SKU || line.ProductID || 'Unknown';
+    const existing = skuTotals.get(sku);
+    if (existing) {
+      existing.amount += share;
+    } else {
+      skuTotals.set(sku, { sku, productName: line.ProductName || sku, amount: share });
+    }
+  }
+}
+
 async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
   const http = getClient();
   if (!http) {
@@ -124,7 +152,9 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
   }
 
   const clampedDays = Math.min(days, MAX_LOOKBACK_DAYS);
-  const cutoffMs = Date.now() - clampedDays * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const cutoffMs = now - clampedDays * 24 * 60 * 60 * 1000;
+  const weekCutoffMs = now - WEEK_MS;
 
   const countResp = await getWithRetry(http, '/stockadjustmentList', {
     Page: 1,
@@ -135,8 +165,11 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
   if (total === 0) {
     return {
       totalLoss: 0,
+      totalGain: 0,
+      netAmount: 0,
       entries: [],
       categoryTotals: [],
+      worstSkusThisWeek: [],
       truncated: false,
       days: clampedDays,
       generatedAt: new Date().toISOString(),
@@ -169,22 +202,41 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
 
   const truncated = candidates.length > MAX_DETAIL_FETCHES;
   const toFetch = candidates.slice(0, MAX_DETAIL_FETCHES);
-  console.log(`[cin7] stock-losses scan: ${candidates.length} candidates in window, fetching details for ${toFetch.length}`);
+  console.log(
+    `[cin7] stock-losses scan: ${candidates.length} stock take numbers in the ${clampedDays}-day window, fetching all ${toFetch.length}`
+  );
 
   const productCategoryCache = new Map();
   const entries = [];
   const categoryTotals = new Map();
+  const skuTotals = new Map();
+  let totalLoss = 0;
+  let totalGain = 0;
+  let processed = 0;
 
   for (const row of toFetch) {
     const detailResp = await getWithRetry(http, '/stockadjustment', { TaskID: row.TaskID });
     const detail = detailResp.data;
-    const lossAmount = lossFromTransactions(detail.Transactions);
-    if (lossAmount <= 0.01) continue;
+    const { loss, gain } = lossAndGainFromTransactions(detail.Transactions);
+    totalLoss += loss;
+    totalGain += gain;
+    processed++;
+    if (processed % 50 === 0) {
+      console.log(`[cin7] ...${processed}/${toFetch.length} stock take numbers processed`);
+    }
 
-    const categories = await categorizeEntry(http, detail, productCategoryCache);
-    const share = Math.round((lossAmount / categories.length) * 100) / 100;
+    if (loss <= 0.01) continue;
+
+    const lines = lineItemsFor(detail);
+    const categories = await categorizeEntry(http, lines, productCategoryCache);
+    const share = Math.round((loss / categories.length) * 100) / 100;
     for (const category of categories) {
       categoryTotals.set(category, Math.round(((categoryTotals.get(category) || 0) + share) * 100) / 100);
+    }
+
+    const effectiveMs = new Date(row.EffectiveDate).getTime();
+    if (Number.isFinite(effectiveMs) && effectiveMs >= weekCutoffMs) {
+      addToSkuTotals(skuTotals, lines, loss);
     }
 
     entries.push({
@@ -194,22 +246,35 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
       reference: row.Reference || '',
       comment: detail.Comment || '',
       categories,
-      lossAmount: Math.round(lossAmount * 100) / 100,
+      lossAmount: Math.round(loss * 100) / 100,
     });
   }
 
   entries.sort((a, b) => new Date(b.date) - new Date(a.date));
-  const totalLoss = Math.round(entries.reduce((sum, e) => sum + e.lossAmount, 0) * 100) / 100;
+  totalLoss = Math.round(totalLoss * 100) / 100;
+  totalGain = Math.round(totalGain * 100) / 100;
+  const netAmount = Math.round((totalGain - totalLoss) * 100) / 100;
+
   const categoryTotalsSorted = [...categoryTotals.entries()]
     .map(([category, amount]) => ({ category, amount }))
     .sort((a, b) => b.amount - a.amount);
 
-  console.log(`[cin7] stock-losses scan complete: $${totalLoss} across ${entries.length} entries`);
+  const worstSkusThisWeek = [...skuTotals.values()]
+    .map((s) => ({ ...s, amount: Math.round(s.amount * 100) / 100 }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, WORST_SKUS_LIMIT);
+
+  console.log(
+    `[cin7] stock-losses scan complete: loss $${totalLoss}, gain $${totalGain}, net $${netAmount} across ${toFetch.length} stock take numbers (${entries.length} were losses)`
+  );
 
   return {
     totalLoss,
+    totalGain,
+    netAmount,
     entries,
     categoryTotals: categoryTotalsSorted,
+    worstSkusThisWeek,
     truncated,
     days: clampedDays,
     generatedAt: new Date().toISOString(),

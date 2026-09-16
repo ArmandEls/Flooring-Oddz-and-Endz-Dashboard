@@ -1,4 +1,4 @@
-const STATUSES = ['todo', 'doing', 'done'];
+const STATUSES = ['todo', 'doing', 'blocked', 'done'];
 const POLL_MS = 5000;
 
 const boardEl = document.getElementById('board');
@@ -90,20 +90,30 @@ function renderCard(task) {
   const actions = [];
   if (task.status === 'todo') {
     actions.push(`<button class="btn btn-small" data-action="status" data-status="doing" data-id="${task.id}">Start</button>`);
+    actions.push(`<button class="btn btn-small" data-action="block" data-id="${task.id}">Block</button>`);
   }
   if (task.status === 'doing') {
     actions.push(`<button class="btn btn-small" data-action="status" data-status="todo" data-id="${task.id}">Back to To Do</button>`);
     actions.push(`<button class="btn btn-small" data-action="status" data-status="done" data-id="${task.id}">Done</button>`);
+    actions.push(`<button class="btn btn-small" data-action="block" data-id="${task.id}">Block</button>`);
+  }
+  if (task.status === 'blocked') {
+    actions.push(`<button class="btn btn-small" data-action="status" data-status="doing" data-id="${task.id}">Unblock</button>`);
   }
   if (task.status === 'done') {
     actions.push(`<button class="btn btn-small" data-action="status" data-status="doing" data-id="${task.id}">Reopen</button>`);
   }
   actions.push(`<button class="btn btn-small" data-action="delete" data-id="${task.id}">Delete</button>`);
 
+  const blockedNote = task.status === 'blocked' && task.blockedReason
+    ? `<div class="blocked-reason">🚫 ${escapeHtml(task.blockedReason)}</div>`
+    : '';
+
   return `
     <div class="card" draggable="true" data-id="${task.id}">
       <div class="card-title">${escapeHtml(task.title)} ${frequencyBadge}</div>
       <div class="card-meta">${meta}</div>
+      ${blockedNote}
       <div class="card-actions">${actions.join('')}</div>
     </div>
   `;
@@ -114,18 +124,25 @@ async function onCardAction(e) {
   const action = e.currentTarget.dataset.action;
   if (action === 'status') {
     await updateStatus(id, e.currentTarget.dataset.status);
+  } else if (action === 'block') {
+    const reason = prompt('Why is this item blocked?');
+    if (reason && reason.trim()) await updateStatus(id, 'blocked', reason.trim());
   } else if (action === 'delete') {
     if (confirm('Delete this item?')) await deleteTask(id);
   }
 }
 
-async function updateStatus(id, status) {
+async function updateStatus(id, status, reason) {
   const res = await fetch(`/api/tasks/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, reason }),
   });
   if (res.ok) await loadTasks();
+  else if (res.status === 400) {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || 'Could not update item.');
+  }
 }
 
 async function deleteTask(id) {
@@ -172,7 +189,14 @@ boardEl.querySelectorAll('.card-list').forEach((list) => {
   list.addEventListener('drop', async (e) => {
     e.preventDefault();
     list.classList.remove('drag-over');
-    if (draggedId) await updateStatus(draggedId, list.dataset.status);
+    if (!draggedId) return;
+    const status = list.dataset.status;
+    if (status === 'blocked') {
+      const reason = prompt('Why is this item blocked?');
+      if (reason && reason.trim()) await updateStatus(draggedId, 'blocked', reason.trim());
+    } else {
+      await updateStatus(draggedId, status);
+    }
   });
 });
 
@@ -260,12 +284,40 @@ function renderLosses(data) {
   const updated = data.generatedAt ? `Updated ${fmtRelativeTime(data.generatedAt)}` : '';
   const relayedNote = data.relayed ? ' · via local relay' : '';
 
+  const totalGain = data.totalGain || 0;
+  const netAmount = data.netAmount ?? -(data.totalLoss || 0);
+  const netClass = netAmount < 0 ? 'net-negative' : 'net-positive';
+  const netLabel = netAmount < 0 ? 'net loss' : 'net gain';
+
+  const worstSkuRows = (data.worstSkusThisWeek || [])
+    .map(
+      (s) => `
+      <div class="sku-row">
+        <span class="sku-name" title="${escapeHtml(s.sku)}">${escapeHtml(s.productName)}</span>
+        <span class="sku-amount">${fmtMoney(s.amount)}</span>
+      </div>`
+    )
+    .join('');
+
+  const worstSkuBlock = data.worstSkusThisWeek && data.worstSkusThisWeek.length
+    ? `
+      <div class="worst-skus">
+        <h3>Worst SKUs this week</h3>
+        ${worstSkuRows}
+      </div>`
+    : '';
+
   lossesBody.innerHTML = `
     <div class="losses-summary">
       <span class="losses-total">${fmtMoney(data.totalLoss || 0)}</span>
       <span class="muted">lost in the last ${data.days} days · ${updated}${relayedNote}</span>
     </div>
+    <div class="losses-net">
+      <span class="muted">Gained back ${fmtMoney(totalGain)} over the same period</span>
+      <span class="net-badge ${netClass}">${fmtMoney(Math.abs(netAmount))} ${netLabel}</span>
+    </div>
     ${data.truncated ? '<p class="muted">Showing the most recent adjustments only.</p>' : ''}
+    ${worstSkuBlock}
     ${categoryBlock}
     ${table}
   `;
