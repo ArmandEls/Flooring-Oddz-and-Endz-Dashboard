@@ -6,6 +6,7 @@ const addForm = document.getElementById('add-task-form');
 const titleInput = document.getElementById('task-title');
 const assigneeInput = document.getElementById('task-assignee');
 const frequencyInput = document.getElementById('task-frequency');
+const locationInput = document.getElementById('task-location');
 const lossesBody = document.getElementById('losses-body');
 const refreshLossesBtn = document.getElementById('refresh-losses');
 
@@ -87,6 +88,10 @@ function renderCard(task) {
     ? `<span class="badge badge-${task.frequency}">↻ ${FREQUENCY_LABELS[task.frequency]}</span>`
     : '';
 
+  const locationBadge = task.location
+    ? `<span class="badge badge-location">📍 ${escapeHtml(task.location)}</span>`
+    : '';
+
   const actions = [];
   if (task.status === 'todo') {
     actions.push(`<button class="btn btn-small" data-action="status" data-status="doing" data-id="${task.id}">Start</button>`);
@@ -111,7 +116,7 @@ function renderCard(task) {
 
   return `
     <div class="card" draggable="true" data-id="${task.id}">
-      <div class="card-title">${escapeHtml(task.title)} ${frequencyBadge}</div>
+      <div class="card-title">${escapeHtml(task.title)} ${locationBadge} ${frequencyBadge}</div>
       <div class="card-meta">${meta}</div>
       ${blockedNote}
       <div class="card-actions">${actions.join('')}</div>
@@ -157,12 +162,18 @@ addForm.addEventListener('submit', async (e) => {
   const res = await fetch('/api/tasks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, addedBy: assigneeInput.value.trim(), frequency: frequencyInput.value }),
+    body: JSON.stringify({
+      title,
+      addedBy: assigneeInput.value.trim(),
+      frequency: frequencyInput.value,
+      location: locationInput.value,
+    }),
   });
   if (res.ok) {
     titleInput.value = '';
     assigneeInput.value = '';
     frequencyInput.value = 'none';
+    locationInput.value = '';
     await loadTasks();
     titleInput.focus();
   }

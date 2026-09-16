@@ -12,6 +12,7 @@ const DATA_FILE = path.join(DATA_DIR, 'tasks.json');
 
 const STATUSES = ['todo', 'doing', 'blocked', 'done'];
 const FREQUENCIES = ['none', 'daily', 'weekly', 'monthly'];
+const LOCATIONS = ['Melbourne', 'Adelaide', 'Perth'];
 
 function ensureDataFile() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -93,7 +94,7 @@ function listTasks() {
   return data.tasks;
 }
 
-function addTask({ title, addedBy, frequency }) {
+function addTask({ title, addedBy, frequency, location }) {
   return withLock(() => {
     const data = readAll();
     const now = new Date().toISOString();
@@ -103,6 +104,7 @@ function addTask({ title, addedBy, frequency }) {
       status: 'todo',
       addedBy: addedBy ? String(addedBy).trim().slice(0, 60) : '',
       frequency: FREQUENCIES.includes(frequency) ? frequency : 'none',
+      location: LOCATIONS.includes(location) ? location : null,
       lastCompletedAt: null,
       blockedReason: null,
       createdAt: now,
@@ -152,6 +154,7 @@ function deleteTask(id) {
 module.exports = {
   STATUSES,
   FREQUENCIES,
+  LOCATIONS,
   listTasks,
   addTask,
   updateTaskStatus,

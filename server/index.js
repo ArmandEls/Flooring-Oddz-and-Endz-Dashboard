@@ -25,14 +25,17 @@ app.get('/api/tasks', (req, res) => {
 });
 
 app.post('/api/tasks', async (req, res) => {
-  const { title, addedBy, frequency } = req.body || {};
+  const { title, addedBy, frequency, location } = req.body || {};
   if (!title || !String(title).trim()) {
     return res.status(400).json({ error: 'title is required' });
   }
   if (frequency && !store.FREQUENCIES.includes(frequency)) {
     return res.status(400).json({ error: `frequency must be one of ${store.FREQUENCIES.join(', ')}` });
   }
-  const task = await store.addTask({ title, addedBy, frequency });
+  if (location && !store.LOCATIONS.includes(location)) {
+    return res.status(400).json({ error: `location must be one of ${store.LOCATIONS.join(', ')}` });
+  }
+  const task = await store.addTask({ title, addedBy, frequency, location });
   res.status(201).json({ task });
 });
 

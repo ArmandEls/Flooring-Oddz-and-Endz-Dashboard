@@ -234,6 +234,7 @@ main {
 .badge-daily { background: rgba(37, 99, 235, 0.12); color: var(--primary); }
 .badge-weekly { background: rgba(180, 83, 9, 0.12); color: var(--doing); }
 .badge-monthly { background: rgba(30, 142, 90, 0.14); color: var(--done); }
+.badge-location { background: rgba(107, 114, 142, 0.14); color: var(--muted); }
 
 .notice {
   padding: 10px 12px;
@@ -270,6 +271,7 @@ main {
 #task-title { flex: 2 1 260px; }
 #task-assignee { flex: 1 1 160px; }
 #task-frequency { flex: 1 1 150px; }
+#task-location { flex: 1 1 130px; }
 
 .board {
   display: grid;
