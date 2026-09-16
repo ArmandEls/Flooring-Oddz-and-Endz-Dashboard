@@ -106,6 +106,44 @@ token-authenticated endpoint.
 - If the relay machine is off, the dashboard just keeps showing the last
   data it received (with its timestamp) rather than breaking.
 
+## Weekly email report
+
+`scripts/send-weekly-report.js` compiles this week's numbers (loss/gain/net,
+category breakdown, worst SKUs) plus a to-do board snapshot (counts, what's
+blocked and why, what got done) and emails it. It reads from the live
+dashboard's own API (`DASHBOARD_URL`), not from Cin7 directly, so it just
+uses whatever the relay most recently pushed.
+
+Setup in `.env` on whichever machine will send it:
+
+- `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` — credentials for the
+  mailbox it sends *from*. For Microsoft 365: host `smtp.office365.com`, port
+  `587`, and an app password for that account (Authenticated SMTP must be
+  enabled for the mailbox — ask your M365 admin if it isn't).
+- `REPORT_TO` — who receives it (defaults to `SMTP_USER`, i.e. sends to
+  itself so you can review before forwarding).
+- `REPORT_FROM` — optional, defaults to `SMTP_USER`.
+
+Run `npm run weekly-report` once to test. If SMTP isn't configured yet (or
+you pass `--dry-run`), it writes `weekly-report-preview.html` instead of
+sending, so you can check the content first. Schedule it weekly (e.g.
+Monday 7am) the same way as the relay task — see below.
+
+## Windows Task Scheduler notes (relay + weekly report)
+
+Both recurring scripts are launched via a small `.vbs` wrapper
+(`scripts/run-relay-hidden.vbs`, and similarly for the weekly report)
+instead of pointing the scheduled task straight at `node.exe`. Two reasons:
+
+1. **No visible window.** A scheduled task set to "run only when logged on"
+   normally pops a console window on the desktop each time it fires — using
+   `wscript.exe //B path\to\wrapper.vbs` with `WScript.Shell.Run(cmd, 0,
+   False)` launches it fully hidden.
+2. **Immune to unrelated Ctrl+C.** If the task's process shares a console
+   with something else running interactively in the same session, a Ctrl+C
+   sent elsewhere can kill it mid-run. The `.vbs` launcher detaches it into
+   its own process, sidestepping that.
+
 ## Project layout
 
 ```

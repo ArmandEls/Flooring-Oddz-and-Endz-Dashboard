@@ -169,6 +169,10 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
       entries: [],
       categoryTotals: [],
       worstSkusThisWeek: [],
+      weeklyLoss: 0,
+      weeklyGain: 0,
+      weeklyNetAmount: 0,
+      weeklyCategoryTotals: [],
       truncated: false,
       days: clampedDays,
       generatedAt: new Date().toISOString(),
@@ -208,9 +212,12 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
   const productCategoryCache = new Map();
   const entries = [];
   const categoryTotals = new Map();
+  const weeklyCategoryTotals = new Map();
   const skuTotals = new Map();
   let totalLoss = 0;
   let totalGain = 0;
+  let weeklyLoss = 0;
+  let weeklyGain = 0;
   let processed = 0;
 
   for (const row of toFetch) {
@@ -222,6 +229,13 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
     processed++;
     if (processed % 50 === 0) {
       console.log(`[cin7] ...${processed}/${toFetch.length} stock take numbers processed`);
+    }
+
+    const effectiveMs = new Date(row.EffectiveDate).getTime();
+    const inLastWeek = Number.isFinite(effectiveMs) && effectiveMs >= weekCutoffMs;
+    if (inLastWeek) {
+      weeklyLoss += loss;
+      weeklyGain += gain;
     }
 
     const net = loss - gain;
@@ -236,13 +250,18 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
       const share = Math.round((net / categories.length) * 100) / 100;
       for (const category of categories) {
         categoryTotals.set(category, Math.round(((categoryTotals.get(category) || 0) + share) * 100) / 100);
+        if (inLastWeek) {
+          weeklyCategoryTotals.set(
+            category,
+            Math.round(((weeklyCategoryTotals.get(category) || 0) + share) * 100) / 100
+          );
+        }
       }
     }
 
     if (loss <= 0.01) continue;
 
-    const effectiveMs = new Date(row.EffectiveDate).getTime();
-    if (Number.isFinite(effectiveMs) && effectiveMs >= weekCutoffMs) {
+    if (inLastWeek) {
       addToSkuTotals(skuTotals, lines, loss);
     }
 
@@ -261,8 +280,15 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
   totalLoss = Math.round(totalLoss * 100) / 100;
   totalGain = Math.round(totalGain * 100) / 100;
   const netAmount = Math.round((totalGain - totalLoss) * 100) / 100;
+  weeklyLoss = Math.round(weeklyLoss * 100) / 100;
+  weeklyGain = Math.round(weeklyGain * 100) / 100;
+  const weeklyNetAmount = Math.round((weeklyGain - weeklyLoss) * 100) / 100;
 
   const categoryTotalsSorted = [...categoryTotals.entries()]
+    .map(([category, amount]) => ({ category, amount }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const weeklyCategoryTotalsSorted = [...weeklyCategoryTotals.entries()]
     .map(([category, amount]) => ({ category, amount }))
     .sort((a, b) => b.amount - a.amount);
 
@@ -282,6 +308,10 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
     entries,
     categoryTotals: categoryTotalsSorted,
     worstSkusThisWeek,
+    weeklyLoss,
+    weeklyGain,
+    weeklyNetAmount,
+    weeklyCategoryTotals: weeklyCategoryTotalsSorted,
     truncated,
     days: clampedDays,
     generatedAt: new Date().toISOString(),
