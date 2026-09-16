@@ -3,3 +3,8 @@ node_modules/
 data/tasks.json
 data/losses-cache.json
 relay.log
+manual-relay.log
+manual-relay-err.log
+manual-test.log
+manual-test-err.log
+weekly-report-preview.html
