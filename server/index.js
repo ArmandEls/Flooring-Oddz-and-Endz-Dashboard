@@ -82,7 +82,7 @@ app.get('/api/stock-losses', async (req, res) => {
     const data = await getLosses(false);
     res.json({ configured: true, days: STOCK_LOSS_DAYS, ...data });
   } catch (err) {
-    console.error('Cin7 fetch failed:', err.message);
+    logCin7Error('fetch', err);
     res.status(502).json({ configured: true, error: 'Could not reach Cin7 Core', days: STOCK_LOSS_DAYS });
   }
 });
@@ -95,10 +95,20 @@ app.post('/api/stock-losses/refresh', async (req, res) => {
     const data = await getLosses(true);
     res.json({ configured: true, days: STOCK_LOSS_DAYS, ...data });
   } catch (err) {
-    console.error('Cin7 refresh failed:', err.message);
+    logCin7Error('refresh', err);
     res.status(502).json({ configured: true, error: 'Could not reach Cin7 Core', days: STOCK_LOSS_DAYS });
   }
 });
+
+function logCin7Error(label, err) {
+  const status = err.response?.status;
+  const body = err.response?.data;
+  console.error(
+    `Cin7 ${label} failed: status=${status ?? 'n/a'} message=${err.message} body=${
+      typeof body === 'string' ? body.slice(0, 500) : JSON.stringify(body)?.slice(0, 500)
+    }`
+  );
+}
 
 app.listen(PORT, () => {
   console.log(`Team dashboard running at http://localhost:${PORT}`);
