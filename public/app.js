@@ -244,7 +244,7 @@ function renderLosses(data) {
     .map(
       (e) => `
       <tr>
-        <td>${new Date(e.date).toLocaleDateString()}</td>
+        <td>${new Date(e.date).toLocaleDateString('en-AU')}</td>
         <td>${escapeHtml(e.stocktakeNumber)}</td>
         <td>${escapeHtml((e.categories || []).join(', '))}</td>
         <td>${escapeHtml(e.reference || e.comment || '')}</td>
