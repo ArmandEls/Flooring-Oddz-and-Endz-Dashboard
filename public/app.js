@@ -258,7 +258,7 @@ function renderLosses(data) {
       <tr>
         <td>${new Date(e.date).toLocaleDateString('en-AU')}</td>
         <td>${escapeHtml(e.stocktakeNumber)}</td>
-        <td>${escapeHtml((e.categories || []).join(', '))}</td>
+        <td>${escapeHtml((e.locations || []).join(', '))}</td>
         <td>${escapeHtml(e.reference || e.comment || '')}</td>
         <td class="amount">${fmtMoney(e.lossAmount)}</td>
       </tr>`
@@ -269,32 +269,32 @@ function renderLosses(data) {
     ? `
       <table class="losses-table">
         <thead>
-          <tr><th>Date</th><th>Stock take</th><th>Category</th><th>Reference</th><th class="amount">Loss</th></tr>
+          <tr><th>Date</th><th>Stock take</th><th>State</th><th>Reference</th><th class="amount">Loss</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>`
     : '<p class="muted">No stock take losses in this period.</p>';
 
-  // Gross loss per category — same basis as the "Loss" column in the table
+  // Gross loss per state — same basis as the "Loss" column in the table
   // below, so the two reconcile: summing this list equals summing the table.
-  const maxCategoryAmount = Math.max(1, ...(data.categoryTotals || []).map((c) => c.amount));
-  const categoryRows = (data.categoryTotals || [])
+  const maxLocationAmount = Math.max(1, ...(data.locationTotals || []).map((c) => c.amount));
+  const categoryRows = (data.locationTotals || [])
     .map((c) => {
       return `
       <div class="category-row">
-        <span class="category-name">${escapeHtml(c.category)}</span>
+        <span class="category-name">${escapeHtml(c.state)}</span>
         <span class="category-bar-track">
-          <span class="category-bar" style="width:${Math.max(4, (c.amount / maxCategoryAmount) * 100)}%"></span>
+          <span class="category-bar" style="width:${Math.max(4, (c.amount / maxLocationAmount) * 100)}%"></span>
         </span>
         <span class="category-amount">${fmtMoney(c.amount)}</span>
       </div>`;
     })
     .join('');
 
-  const categoryBlock = data.categoryTotals && data.categoryTotals.length
+  const categoryBlock = data.locationTotals && data.locationTotals.length
     ? `
       <div class="category-breakdown">
-        <h3>By category</h3>
+        <h3>By state</h3>
         ${categoryRows}
       </div>`
     : '';

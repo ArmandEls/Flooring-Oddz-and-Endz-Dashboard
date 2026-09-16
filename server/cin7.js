@@ -6,11 +6,6 @@ const PAGE_SIZE = 100;
 // even over a 180-day window (~440), so nothing in a 2-month window gets
 // silently dropped; "truncated" only fires if volume genuinely exceeds this.
 const MAX_DETAIL_FETCHES = 600;
-// A large stock take can touch 50+ distinct products; resolving every one's
-// category would mean 50+ extra API calls for a single entry. Sample a
-// handful instead — real stock takes are almost always run per product
-// range already, so a few products are enough to identify the category.
-const MAX_PRODUCTS_PER_ENTRY = 3;
 // Cin7 Core enforces a fairly strict per-account rate limit; stay well under
 // it (roughly 1 request/sec) and back off hard whenever it replies 429.
 const REQUEST_SPACING_MS = 1000;
@@ -18,7 +13,7 @@ const MAX_RETRIES = 5;
 const MAX_LOOKBACK_DAYS = 60; // never look back more than 2 months
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const WORST_SKUS_LIMIT = 8;
-const UNCATEGORIZED = 'Uncategorized';
+const OTHER_STATE = 'Other';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,42 +82,27 @@ function lineItemsFor(detail) {
   return (detail.ExistingStockLines || []).length ? detail.ExistingStockLines : detail.NewStockLines || [];
 }
 
-// Cin7 doesn't expose category on the adjustment/stock-take record itself,
-// only on the Product. We resolve it per product and cache lookups for the
-// life of one fetchRecentStockLosses() call.
-async function resolveCategory(http, productId, cache) {
-  if (!productId) return UNCATEGORIZED;
-  if (cache.has(productId)) return cache.get(productId);
-
-  try {
-    const resp = await getWithRetry(http, '/product', { ID: productId });
-    const category = resp.data?.Products?.[0]?.Category || UNCATEGORIZED;
-    cache.set(productId, category);
-    return category;
-  } catch {
-    cache.set(productId, UNCATEGORIZED);
-    return UNCATEGORIZED;
-  }
+// Maps this account's actual Cin7 Location names to the three states the
+// business cares about. Confirmed with the account owner:
+// - "Main Warehouse" (the default, used for nearly all stock takes) and
+//   "Perth Holding Warehouse" are both Perth.
+// - "Melbourne" and "Back Orders Melbourne" are both Melbourne.
+// - "Adelaide Warehouse" is Adelaide.
+// - Anything else (e.g. the generic "Backorders", or no location) is Other.
+function stateForLocationName(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('melbourne')) return 'Melbourne';
+  if (n.includes('adelaide')) return 'Adelaide';
+  if (n.includes('perth')) return 'Perth';
+  if (n.includes('main warehouse')) return 'Perth';
+  return OTHER_STATE;
 }
 
-// Distributes an adjustment's total $ loss evenly across the distinct
-// categories its line items touch, so per-category totals still add up to
-// the true total loss instead of double-counting mixed stock takes.
-async function categorizeEntry(http, lines, productCategoryCache) {
-  const allProductIds = [...new Set(lines.map((l) => l.ProductID).filter(Boolean))];
-  if (allProductIds.length === 0) return [UNCATEGORIZED];
-
-  // Prefer IDs already in cache (free) before spending API calls sampling
-  // uncached ones, so warm categories don't get pushed out by the cap.
-  const cached = allProductIds.filter((id) => productCategoryCache.has(id));
-  const uncached = allProductIds.filter((id) => !productCategoryCache.has(id));
-  const sample = [...cached, ...uncached].slice(0, Math.max(MAX_PRODUCTS_PER_ENTRY, cached.length));
-
-  const categories = new Set();
-  for (const id of sample) {
-    categories.add(await resolveCategory(http, id, productCategoryCache));
-  }
-  return [...categories];
+// Location is already present on every line item — no extra API call needed
+// (unlike product category, which lives on the Product record).
+function statesForLines(lines) {
+  const states = new Set(lines.map((l) => stateForLocationName(l.Location)));
+  return states.size ? [...states] : [OTHER_STATE];
 }
 
 // SKU/ProductName are already present on each line item in the detail
@@ -167,12 +147,12 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
       totalGain: 0,
       netAmount: 0,
       entries: [],
-      categoryTotals: [],
+      locationTotals: [],
       worstSkusThisWeek: [],
       weeklyLoss: 0,
       weeklyGain: 0,
       weeklyNetAmount: 0,
-      weeklyCategoryTotals: [],
+      weeklyLocationTotals: [],
       truncated: false,
       days: clampedDays,
       generatedAt: new Date().toISOString(),
@@ -209,10 +189,9 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
     `[cin7] stock-losses scan: ${candidates.length} stock take numbers in the ${clampedDays}-day window, fetching all ${toFetch.length}`
   );
 
-  const productCategoryCache = new Map();
   const entries = [];
-  const categoryTotals = new Map();
-  const weeklyCategoryTotals = new Map();
+  const locationTotals = new Map();
+  const weeklyLocationTotals = new Map();
   const skuTotals = new Map();
   let totalLoss = 0;
   let totalGain = 0;
@@ -239,24 +218,20 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
     }
 
     const lines = lineItemsFor(detail);
-    let categories = [];
+    let locations = [];
 
-    // Category totals are built from the same gross loss figure shown per
+    // Location totals are built from the same gross loss figure shown per
     // stock take in the entries list below, so the two reconcile exactly —
-    // summing "By category" equals summing the "Loss" column. (An earlier
-    // version netted gains in here, which both broke that reconciliation
-    // and silently dropped category credit for any stock take whose gain
-    // nearly offset its own loss, even though it still showed a real loss
-    // below.)
+    // summing "By state" equals summing the "Loss" column.
     if (loss > 0.01) {
-      categories = await categorizeEntry(http, lines, productCategoryCache);
-      const share = Math.round((loss / categories.length) * 100) / 100;
-      for (const category of categories) {
-        categoryTotals.set(category, Math.round(((categoryTotals.get(category) || 0) + share) * 100) / 100);
+      locations = statesForLines(lines);
+      const share = Math.round((loss / locations.length) * 100) / 100;
+      for (const state of locations) {
+        locationTotals.set(state, Math.round(((locationTotals.get(state) || 0) + share) * 100) / 100);
         if (inLastWeek) {
-          weeklyCategoryTotals.set(
-            category,
-            Math.round(((weeklyCategoryTotals.get(category) || 0) + share) * 100) / 100
+          weeklyLocationTotals.set(
+            state,
+            Math.round(((weeklyLocationTotals.get(state) || 0) + share) * 100) / 100
           );
         }
       }
@@ -274,7 +249,7 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
       date: row.EffectiveDate,
       reference: row.Reference || '',
       comment: detail.Comment || '',
-      categories,
+      locations,
       lossAmount: Math.round(loss * 100) / 100,
     });
   }
@@ -287,12 +262,12 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
   weeklyGain = Math.round(weeklyGain * 100) / 100;
   const weeklyNetAmount = Math.round((weeklyGain - weeklyLoss) * 100) / 100;
 
-  const categoryTotalsSorted = [...categoryTotals.entries()]
-    .map(([category, amount]) => ({ category, amount }))
+  const locationTotalsSorted = [...locationTotals.entries()]
+    .map(([state, amount]) => ({ state, amount }))
     .sort((a, b) => b.amount - a.amount);
 
-  const weeklyCategoryTotalsSorted = [...weeklyCategoryTotals.entries()]
-    .map(([category, amount]) => ({ category, amount }))
+  const weeklyLocationTotalsSorted = [...weeklyLocationTotals.entries()]
+    .map(([state, amount]) => ({ state, amount }))
     .sort((a, b) => b.amount - a.amount);
 
   const worstSkusThisWeek = [...skuTotals.values()]
@@ -309,12 +284,12 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
     totalGain,
     netAmount,
     entries,
-    categoryTotals: categoryTotalsSorted,
+    locationTotals: locationTotalsSorted,
     worstSkusThisWeek,
     weeklyLoss,
     weeklyGain,
     weeklyNetAmount,
-    weeklyCategoryTotals: weeklyCategoryTotalsSorted,
+    weeklyLocationTotals: weeklyLocationTotalsSorted,
     truncated,
     days: clampedDays,
     generatedAt: new Date().toISOString(),
