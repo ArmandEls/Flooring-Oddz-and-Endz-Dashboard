@@ -120,25 +120,6 @@ main {
   color: var(--loss);
 }
 
-.losses-net {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-
-.net-badge {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 2px 9px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.net-badge.net-negative { background: rgba(192, 57, 43, 0.12); color: var(--loss); }
-.net-badge.net-positive { background: rgba(30, 142, 90, 0.14); color: var(--done); }
-
 .worst-skus {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -190,6 +171,14 @@ main {
   margin: 4px 0 16px;
 }
 
+.category-breakdown h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
 .category-row {
   display: grid;
   grid-template-columns: 140px 1fr 90px;
@@ -220,11 +209,15 @@ main {
   border-radius: 999px;
 }
 
+.category-bar-gain { background: var(--done); }
+
 .category-amount {
   text-align: right;
   color: var(--loss);
   font-variant-numeric: tabular-nums;
 }
+
+.category-amount-gain { color: var(--done); }
 
 .badge {
   display: inline-block;

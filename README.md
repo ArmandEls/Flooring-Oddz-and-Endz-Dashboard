@@ -3,7 +3,9 @@
 A small, self-hosted dashboard with two things on it:
 
 1. **Recent stock take losses** — pulled live from Cin7 Core, broken down by
-   product category, looking back at most 6 months.
+   product category (net of any gains booked against that category in the
+   same window), plus a highlight of the worst SKUs over the last 7 days.
+   Looks back at most 2 months.
 2. **A kanban to-do board** — To Do / Doing / Done columns. Anyone with the
    link can add items, move them between columns (buttons or drag & drop),
    and delete them. No account or login of any kind — it's just a web page.
@@ -27,7 +29,7 @@ Edit `.env`:
 - `CIN7_ACCOUNT_ID` / `CIN7_APPLICATION_KEY` — from Cin7 Core under
   **Integrations & Add-ons > API**. Leave blank and the losses panel just
   shows a "not connected" message; the to-do board works either way.
-- `STOCK_LOSS_DAYS` — how far back to look (capped at 180 days / 6 months
+- `STOCK_LOSS_DAYS` — how far back to look (capped at 60 days / 2 months
   regardless of what you set here).
 
 ## Run it
@@ -62,18 +64,47 @@ entirely about where you run it:
 
 Cin7 Core doesn't have a single "loss" field — it's derived:
 
-- Each completed stock adjustment has a `Transactions` entry moving value
-  into or out of "Stock on Hand". A negative amount means inventory was
-  written down (a loss); positive means stock was added. We sum the negative
-  side per adjustment.
-- To get a category for each loss, we look up the products involved
-  (`Category` lives on the Product record, not the adjustment) and split the
-  adjustment's loss evenly across the distinct categories it touched.
+- Every completed stock adjustment in the window is scanned (not just a
+  sample) — each one has a `Transactions` entry moving value into or out of
+  "Stock on Hand". A negative amount means inventory was written down (a
+  loss); positive means stock was added/corrected up (a gain).
+- The headline total is the sum of the loss side only, across the window.
+- To get a category for each stock take, we look up the products involved
+  (`Category` lives on the Product record, not the adjustment). **Every**
+  stock take — loss or gain — feeds into its category's running total, so a
+  later gain on the same category pulls that category's number back down
+  instead of losses only ever accumulating. A category can end up negative,
+  meaning it's net *up* over the window.
+- "Worst SKUs this week" splits each loss (last 7 days only) evenly across
+  the specific SKUs that stock take counted, using the SKU/product name
+  already present on the stock take's line items (no extra API calls).
+  Since one stock take often covers many SKUs at once, treat this as "which
+  SKUs keep showing up in loss-making counts," not exact per-SKU accounting.
 - Results are cached for 15 minutes; use the Refresh button for an
-  on-demand update. Only the most recent adjustments are scanned per refresh
-  (capped) to keep it fast and avoid hammering the Cin7 API — if you have a
-  very high volume of stock adjustments, the panel will note that results
-  are truncated to the most recent ones.
+  on-demand update. There's a generous safety ceiling (600 stock takes) on
+  how many get scanned per refresh — the panel will note if results are
+  truncated, which would only happen at unusually high volume.
+
+## Cin7 blocked on the deployed host
+
+Cin7 Core rejects API calls from Render's network (403 "Incorrect
+credentials!") even though the same credentials work everywhere else — this
+looks like Cin7 blocking generic cloud-hosting IP ranges rather than
+anything wrong with your account. Workaround: a relay script
+(`scripts/push-losses.js`) runs on a machine Cin7 *does* allow (e.g. this
+one), fetches the losses, and pushes them to the deployed dashboard via a
+token-authenticated endpoint.
+
+- `npm run relay` runs it once. Needs `DASHBOARD_URL` and `RELAY_TOKEN` set
+  in `.env` (the deployed instance needs the same `RELAY_TOKEN`, and should
+  *not* have `CIN7_ACCOUNT_ID`/`CIN7_APPLICATION_KEY` set, otherwise it'll
+  try — and fail — to call Cin7 directly instead of waiting for the relay).
+- For it to run automatically, set up a recurring task on the relay
+  machine (Windows Task Scheduler, cron, etc.) calling
+  `node scripts/push-losses.js` every 30 minutes or so. A full scan takes
+  several minutes, so don't schedule it much tighter than that.
+- If the relay machine is off, the dashboard just keeps showing the last
+  data it received (with its timestamp) rather than breaking.
 
 ## Project layout
 

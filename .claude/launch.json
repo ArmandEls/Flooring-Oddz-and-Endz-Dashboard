@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "team-dashboard",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["start"],
+      "runtimeExecutable": "C:/Program Files/nodejs/node.exe",
+      "runtimeArgs": ["server/index.js"],
       "port": 3000
     }
   ]

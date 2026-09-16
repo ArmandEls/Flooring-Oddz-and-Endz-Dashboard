@@ -12,17 +12,6 @@
   </header>
 
   <main>
-    <section class="panel losses-panel" aria-labelledby="losses-heading">
-      <div class="panel-head">
-        <h2 id="losses-heading">Recent stock take losses</h2>
-        <button id="refresh-losses" class="btn btn-ghost" type="button">Refresh</button>
-      </div>
-
-      <div id="losses-body">
-        <p class="muted">Loading…</p>
-      </div>
-    </section>
-
     <section class="panel board-panel" aria-labelledby="board-heading">
       <div class="panel-head">
         <h2 id="board-heading">To-do board</h2>
@@ -68,6 +57,17 @@
           <h3>Done <span class="count" id="count-done">0</span></h3>
           <div class="card-list" data-status="done"></div>
         </div>
+      </div>
+    </section>
+
+    <section class="panel losses-panel" aria-labelledby="losses-heading">
+      <div class="panel-head">
+        <h2 id="losses-heading">Recent stock take losses</h2>
+        <button id="refresh-losses" class="btn btn-ghost" type="button">Refresh</button>
+      </div>
+
+      <div id="losses-body">
+        <p class="muted">Loading…</p>
       </div>
     </section>
   </main>

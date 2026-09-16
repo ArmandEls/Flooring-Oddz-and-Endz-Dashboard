@@ -2,10 +2,9 @@ const axios = require('axios');
 
 const BASE_URL = 'https://inventory.dearsystems.com/ExternalApi/v2';
 const PAGE_SIZE = 100;
-// Safety ceiling only — the real number of completed stock adjustments in a
-// 180-day window has been observed around 440 for this account. Set well
-// above that so nothing in the window gets silently dropped; "truncated"
-// only fires if volume genuinely exceeds this.
+// Safety ceiling only — comfortably above the volume this account has shown
+// even over a 180-day window (~440), so nothing in a 2-month window gets
+// silently dropped; "truncated" only fires if volume genuinely exceeds this.
 const MAX_DETAIL_FETCHES = 600;
 // A large stock take can touch 50+ distinct products; resolving every one's
 // category would mean 50+ extra API calls for a single entry. Sample a
@@ -16,7 +15,7 @@ const MAX_PRODUCTS_PER_ENTRY = 3;
 // it (roughly 1 request/sec) and back off hard whenever it replies 429.
 const REQUEST_SPACING_MS = 1000;
 const MAX_RETRIES = 5;
-const MAX_LOOKBACK_DAYS = 180; // never look back more than 6 months
+const MAX_LOOKBACK_DAYS = 60; // never look back more than 2 months
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const WORST_SKUS_LIMIT = 8;
 const UNCATEGORIZED = 'Uncategorized';
@@ -225,14 +224,22 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
       console.log(`[cin7] ...${processed}/${toFetch.length} stock take numbers processed`);
     }
 
-    if (loss <= 0.01) continue;
-
+    const net = loss - gain;
     const lines = lineItemsFor(detail);
-    const categories = await categorizeEntry(http, lines, productCategoryCache);
-    const share = Math.round((loss / categories.length) * 100) / 100;
-    for (const category of categories) {
-      categoryTotals.set(category, Math.round(((categoryTotals.get(category) || 0) + share) * 100) / 100);
+    let categories = [];
+
+    // Every stock take (loss or gain) feeds into its category's running net
+    // total, so a later gain on the same category pulls its total back down
+    // instead of losses only ever accumulating.
+    if (Math.abs(net) > 0.01) {
+      categories = await categorizeEntry(http, lines, productCategoryCache);
+      const share = Math.round((net / categories.length) * 100) / 100;
+      for (const category of categories) {
+        categoryTotals.set(category, Math.round(((categoryTotals.get(category) || 0) + share) * 100) / 100);
+      }
     }
+
+    if (loss <= 0.01) continue;
 
     const effectiveMs = new Date(row.EffectiveDate).getTime();
     if (Number.isFinite(effectiveMs) && effectiveMs >= weekCutoffMs) {

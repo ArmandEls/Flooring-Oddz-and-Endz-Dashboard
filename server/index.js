@@ -10,7 +10,7 @@ const lossesCache = require('./lossesCache');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const STOCK_LOSS_DAYS = Math.min(Number(process.env.STOCK_LOSS_DAYS) || 180, cin7.MAX_LOOKBACK_DAYS);
+const STOCK_LOSS_DAYS = Math.min(Number(process.env.STOCK_LOSS_DAYS) || 60, cin7.MAX_LOOKBACK_DAYS);
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const RELAY_TOKEN = process.env.RELAY_TOKEN || null;
 

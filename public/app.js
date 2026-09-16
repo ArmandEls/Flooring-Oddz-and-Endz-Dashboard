@@ -263,31 +263,35 @@ function renderLosses(data) {
       </table>`
     : '<p class="muted">No stock take losses in this period.</p>';
 
-  const maxCategoryAmount = Math.max(1, ...(data.categoryTotals || []).map((c) => c.amount));
+  // Each category's amount is already net (losses minus any gains booked
+  // against it in the same window) — positive means net loss, negative
+  // means the category is net up overall (later corrections outweighed it).
+  const maxCategoryAmount = Math.max(1, ...(data.categoryTotals || []).map((c) => Math.abs(c.amount)));
   const categoryRows = (data.categoryTotals || [])
-    .map(
-      (c) => `
+    .map((c) => {
+      const isGain = c.amount < 0;
+      const amountText = (isGain ? '+' : '') + fmtMoney(Math.abs(c.amount));
+      return `
       <div class="category-row">
         <span class="category-name">${escapeHtml(c.category)}</span>
         <span class="category-bar-track">
-          <span class="category-bar" style="width:${Math.max(4, (c.amount / maxCategoryAmount) * 100)}%"></span>
+          <span class="category-bar ${isGain ? 'category-bar-gain' : ''}" style="width:${Math.max(4, (Math.abs(c.amount) / maxCategoryAmount) * 100)}%"></span>
         </span>
-        <span class="category-amount">${fmtMoney(c.amount)}</span>
-      </div>`
-    )
+        <span class="category-amount ${isGain ? 'category-amount-gain' : ''}">${amountText}</span>
+      </div>`;
+    })
     .join('');
 
   const categoryBlock = data.categoryTotals && data.categoryTotals.length
-    ? `<div class="category-breakdown">${categoryRows}</div>`
+    ? `
+      <div class="category-breakdown">
+        <h3>By category <span class="muted" style="text-transform:none;letter-spacing:normal;">(net of gains)</span></h3>
+        ${categoryRows}
+      </div>`
     : '';
 
   const updated = data.generatedAt ? `Updated ${fmtRelativeTime(data.generatedAt)}` : '';
   const relayedNote = data.relayed ? ' · via local relay' : '';
-
-  const totalGain = data.totalGain || 0;
-  const netAmount = data.netAmount ?? -(data.totalLoss || 0);
-  const netClass = netAmount < 0 ? 'net-negative' : 'net-positive';
-  const netLabel = netAmount < 0 ? 'net loss' : 'net gain';
 
   const worstSkuRows = (data.worstSkusThisWeek || [])
     .map(
@@ -311,10 +315,6 @@ function renderLosses(data) {
     <div class="losses-summary">
       <span class="losses-total">${fmtMoney(data.totalLoss || 0)}</span>
       <span class="muted">lost in the last ${data.days} days · ${updated}${relayedNote}</span>
-    </div>
-    <div class="losses-net">
-      <span class="muted">Gained back ${fmtMoney(totalGain)} over the same period</span>
-      <span class="net-badge ${netClass}">${fmtMoney(Math.abs(netAmount))} ${netLabel}</span>
     </div>
     ${data.truncated ? '<p class="muted">Showing the most recent adjustments only.</p>' : ''}
     ${worstSkuBlock}
