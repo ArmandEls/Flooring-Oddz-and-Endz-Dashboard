@@ -94,4 +94,4 @@ function deleteTask(id) {
   });
 }
 
-module.exports = { STATUSES, listTasks, addTask, updateTaskStatus, deleteTask };
+module.exports = { STATUSES, listTasks, addTask, updateTaskStatus, deleteTask, DATA_DIR };

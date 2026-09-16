@@ -192,6 +192,8 @@ async function loadLosses(force) {
 }
 
 function renderLosses(data) {
+  refreshLossesBtn.textContent = data.relayed ? 'Check for update' : 'Refresh';
+
   if (!data.configured) {
     lossesBody.innerHTML = `
       <div class="notice">
@@ -248,11 +250,12 @@ function renderLosses(data) {
     : '';
 
   const updated = data.generatedAt ? `Updated ${fmtRelativeTime(data.generatedAt)}` : '';
+  const relayedNote = data.relayed ? ' · via local relay' : '';
 
   lossesBody.innerHTML = `
     <div class="losses-summary">
       <span class="losses-total">${fmtMoney(data.totalLoss || 0)}</span>
-      <span class="muted">lost in the last ${data.days} days · ${updated}</span>
+      <span class="muted">lost in the last ${data.days} days · ${updated}${relayedNote}</span>
     </div>
     ${data.truncated ? '<p class="muted">Showing the most recent adjustments only.</p>' : ''}
     ${categoryBlock}
