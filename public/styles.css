@@ -144,7 +144,7 @@ main {
   padding: 3px 0;
 }
 
-.sku-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sku-name { min-width: 0; word-break: break-word; }
 .sku-amount { color: var(--loss); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .losses-table {
