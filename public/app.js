@@ -5,6 +5,7 @@ const boardEl = document.getElementById('board');
 const addForm = document.getElementById('add-task-form');
 const titleInput = document.getElementById('task-title');
 const authorInput = document.getElementById('task-author');
+const frequencyInput = document.getElementById('task-frequency');
 const lossesBody = document.getElementById('losses-body');
 const refreshLossesBtn = document.getElementById('refresh-losses');
 
@@ -75,10 +76,16 @@ function renderBoard() {
   if (isEditing) document.activeElement?.focus?.();
 }
 
+const FREQUENCY_LABELS = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' };
+
 function renderCard(task) {
   const meta = task.addedBy
     ? `${escapeHtml(task.addedBy)} · ${fmtRelativeTime(task.updatedAt)}`
     : fmtRelativeTime(task.updatedAt);
+
+  const frequencyBadge = FREQUENCY_LABELS[task.frequency]
+    ? `<span class="badge badge-${task.frequency}">↻ ${FREQUENCY_LABELS[task.frequency]}</span>`
+    : '';
 
   const actions = [];
   if (task.status === 'todo') {
@@ -95,7 +102,7 @@ function renderCard(task) {
 
   return `
     <div class="card" draggable="true" data-id="${task.id}">
-      <div class="card-title">${escapeHtml(task.title)}</div>
+      <div class="card-title">${escapeHtml(task.title)} ${frequencyBadge}</div>
       <div class="card-meta">${meta}</div>
       <div class="card-actions">${actions.join('')}</div>
     </div>
@@ -133,10 +140,11 @@ addForm.addEventListener('submit', async (e) => {
   const res = await fetch('/api/tasks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, addedBy: authorInput.value.trim() }),
+    body: JSON.stringify({ title, addedBy: authorInput.value.trim(), frequency: frequencyInput.value }),
   });
   if (res.ok) {
     titleInput.value = '';
+    frequencyInput.value = 'none';
     await loadTasks();
     titleInput.focus();
   }

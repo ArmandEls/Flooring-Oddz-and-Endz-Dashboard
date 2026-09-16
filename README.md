@@ -1,4 +1,4 @@
-# Team Dashboard
+# Flooring Oddz and Endz Dashboard
 
 A small, self-hosted dashboard with two things on it:
 
@@ -7,6 +7,9 @@ A small, self-hosted dashboard with two things on it:
 2. **A kanban to-do board** — To Do / Doing / Done columns. Anyone with the
    link can add items, move them between columns (buttons or drag & drop),
    and delete them. No account or login of any kind — it's just a web page.
+   Items can optionally repeat daily, weekly, or monthly — a repeating item
+   marked Done automatically moves back to To Do once the next period
+   starts (next day/week/month), no need to re-add it.
 
 It's a plain Node.js + Express app with no database server: tasks are stored
 in `data/tasks.json` on disk. That keeps it easy to run anywhere Node runs.

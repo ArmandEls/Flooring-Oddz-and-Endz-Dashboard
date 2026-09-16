@@ -11,6 +11,7 @@ const DATA_DIR = process.env.DATA_DIR
 const DATA_FILE = path.join(DATA_DIR, 'tasks.json');
 
 const STATUSES = ['todo', 'doing', 'done'];
+const FREQUENCIES = ['none', 'daily', 'weekly', 'monthly'];
 
 function ensureDataFile() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -45,11 +46,54 @@ function withLock(fn) {
   return result;
 }
 
-function listTasks() {
-  return readAll().tasks;
+// --- Recurring task resets -------------------------------------------------
+// A daily/weekly/monthly task that's marked Done moves itself back to To Do
+// once the next period starts, so the board doesn't need anyone to
+// manually "re-add" the same chore. Resets are computed lazily whenever
+// tasks are read/listed, rather than needing a background cron.
+
+function isoWeekKey(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${weekNo}`;
 }
 
-function addTask({ title, addedBy }) {
+function periodKey(frequency, date) {
+  if (frequency === 'daily') return date.toISOString().slice(0, 10);
+  if (frequency === 'weekly') return isoWeekKey(date);
+  if (frequency === 'monthly') return `${date.getFullYear()}-${date.getMonth()}`;
+  return null;
+}
+
+// Mutates tasks in place; returns true if anything changed (so callers can
+// decide whether a write is needed).
+function applyRecurringResets(tasks) {
+  const now = new Date();
+  let changed = false;
+  for (const task of tasks) {
+    if (task.status !== 'done' || !task.frequency || task.frequency === 'none') continue;
+    const completedAt = task.lastCompletedAt ? new Date(task.lastCompletedAt) : null;
+    if (!completedAt) continue;
+    if (periodKey(task.frequency, completedAt) !== periodKey(task.frequency, now)) {
+      task.status = 'todo';
+      task.lastCompletedAt = null;
+      task.updatedAt = now.toISOString();
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function listTasks() {
+  const data = readAll();
+  if (applyRecurringResets(data.tasks)) writeAll(data);
+  return data.tasks;
+}
+
+function addTask({ title, addedBy, frequency }) {
   return withLock(() => {
     const data = readAll();
     const now = new Date().toISOString();
@@ -58,6 +102,8 @@ function addTask({ title, addedBy }) {
       title: String(title).trim(),
       status: 'todo',
       addedBy: addedBy ? String(addedBy).trim().slice(0, 60) : '',
+      frequency: FREQUENCIES.includes(frequency) ? frequency : 'none',
+      lastCompletedAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -77,8 +123,10 @@ function updateTaskStatus(id, status) {
     const data = readAll();
     const task = data.tasks.find((t) => t.id === id);
     if (!task) return null;
+    const now = new Date().toISOString();
     task.status = status;
-    task.updatedAt = new Date().toISOString();
+    task.lastCompletedAt = status === 'done' ? now : null;
+    task.updatedAt = now;
     writeAll(data);
     return task;
   });
@@ -94,4 +142,12 @@ function deleteTask(id) {
   });
 }
 
-module.exports = { STATUSES, listTasks, addTask, updateTaskStatus, deleteTask, DATA_DIR };
+module.exports = {
+  STATUSES,
+  FREQUENCIES,
+  listTasks,
+  addTask,
+  updateTaskStatus,
+  deleteTask,
+  DATA_DIR,
+};

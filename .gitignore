@@ -1,3 +1,5 @@
 node_modules/
 .env
 data/tasks.json
+data/losses-cache.json
+relay.log

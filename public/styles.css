@@ -179,6 +179,22 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.badge-daily { background: rgba(37, 99, 235, 0.12); color: var(--primary); }
+.badge-weekly { background: rgba(180, 83, 9, 0.12); color: var(--doing); }
+.badge-monthly { background: rgba(30, 142, 90, 0.14); color: var(--done); }
+
 .notice {
   padding: 10px 12px;
   border-radius: 8px;
@@ -201,7 +217,8 @@ main {
   flex-wrap: wrap;
 }
 
-.add-task-form input[type="text"] {
+.add-task-form input[type="text"],
+.add-task-form select {
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
@@ -212,6 +229,7 @@ main {
 
 #task-title { flex: 2 1 260px; }
 #task-author { flex: 1 1 160px; }
+#task-frequency { flex: 1 1 150px; }
 
 .board {
   display: grid;
