@@ -1,0 +1,7 @@
+[relay] fetching losses from Cin7 Core (last 60 days)...
+[cin7] stock-losses scan: 104 stock take numbers in the 60-day window, fetching all 104
+[cin7] ...50/104 stock take numbers processed
+[cin7] ...100/104 stock take numbers processed
+[cin7] stock-losses scan complete: loss $17075.94, gain $19608.05, net $2532.11 across 104 stock take numbers (37 were losses)
+[relay] fetched: $17075.94 across 37 entries
+[relay] pushed to dashboard successfully.

@@ -268,7 +268,7 @@ main {
 }
 
 #task-title { flex: 2 1 260px; }
-#task-author { flex: 1 1 160px; }
+#task-assignee { flex: 1 1 160px; }
 #task-frequency { flex: 1 1 150px; }
 
 .board {

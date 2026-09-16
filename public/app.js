@@ -4,7 +4,7 @@ const POLL_MS = 5000;
 const boardEl = document.getElementById('board');
 const addForm = document.getElementById('add-task-form');
 const titleInput = document.getElementById('task-title');
-const authorInput = document.getElementById('task-author');
+const assigneeInput = document.getElementById('task-assignee');
 const frequencyInput = document.getElementById('task-frequency');
 const lossesBody = document.getElementById('losses-body');
 const refreshLossesBtn = document.getElementById('refresh-losses');
@@ -45,7 +45,7 @@ async function loadTasks() {
 }
 
 function renderBoard() {
-  const isEditing = document.activeElement === titleInput || document.activeElement === authorInput;
+  const isEditing = document.activeElement === titleInput || document.activeElement === assigneeInput;
 
   for (const status of STATUSES) {
     const list = boardEl.querySelector(`.card-list[data-status="${status}"]`);
@@ -157,10 +157,11 @@ addForm.addEventListener('submit', async (e) => {
   const res = await fetch('/api/tasks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, addedBy: authorInput.value.trim(), frequency: frequencyInput.value }),
+    body: JSON.stringify({ title, addedBy: assigneeInput.value.trim(), frequency: frequencyInput.value }),
   });
   if (res.ok) {
     titleInput.value = '';
+    assigneeInput.value = '';
     frequencyInput.value = 'none';
     await loadTasks();
     titleInput.focus();
