@@ -275,21 +275,18 @@ function renderLosses(data) {
       </table>`
     : '<p class="muted">No stock take losses in this period.</p>';
 
-  // Each category's amount is already net (losses minus any gains booked
-  // against it in the same window) — positive means net loss, negative
-  // means the category is net up overall (later corrections outweighed it).
-  const maxCategoryAmount = Math.max(1, ...(data.categoryTotals || []).map((c) => Math.abs(c.amount)));
+  // Gross loss per category — same basis as the "Loss" column in the table
+  // below, so the two reconcile: summing this list equals summing the table.
+  const maxCategoryAmount = Math.max(1, ...(data.categoryTotals || []).map((c) => c.amount));
   const categoryRows = (data.categoryTotals || [])
     .map((c) => {
-      const isGain = c.amount < 0;
-      const amountText = (isGain ? '+' : '') + fmtMoney(Math.abs(c.amount));
       return `
       <div class="category-row">
         <span class="category-name">${escapeHtml(c.category)}</span>
         <span class="category-bar-track">
-          <span class="category-bar ${isGain ? 'category-bar-gain' : ''}" style="width:${Math.max(4, (Math.abs(c.amount) / maxCategoryAmount) * 100)}%"></span>
+          <span class="category-bar" style="width:${Math.max(4, (c.amount / maxCategoryAmount) * 100)}%"></span>
         </span>
-        <span class="category-amount ${isGain ? 'category-amount-gain' : ''}">${amountText}</span>
+        <span class="category-amount">${fmtMoney(c.amount)}</span>
       </div>`;
     })
     .join('');
@@ -297,7 +294,7 @@ function renderLosses(data) {
   const categoryBlock = data.categoryTotals && data.categoryTotals.length
     ? `
       <div class="category-breakdown">
-        <h3>By category <span class="muted" style="text-transform:none;letter-spacing:normal;">(net of gains)</span></h3>
+        <h3>By category</h3>
         ${categoryRows}
       </div>`
     : '';

@@ -238,16 +238,19 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
       weeklyGain += gain;
     }
 
-    const net = loss - gain;
     const lines = lineItemsFor(detail);
     let categories = [];
 
-    // Every stock take (loss or gain) feeds into its category's running net
-    // total, so a later gain on the same category pulls its total back down
-    // instead of losses only ever accumulating.
-    if (Math.abs(net) > 0.01) {
+    // Category totals are built from the same gross loss figure shown per
+    // stock take in the entries list below, so the two reconcile exactly —
+    // summing "By category" equals summing the "Loss" column. (An earlier
+    // version netted gains in here, which both broke that reconciliation
+    // and silently dropped category credit for any stock take whose gain
+    // nearly offset its own loss, even though it still showed a real loss
+    // below.)
+    if (loss > 0.01) {
       categories = await categorizeEntry(http, lines, productCategoryCache);
-      const share = Math.round((net / categories.length) * 100) / 100;
+      const share = Math.round((loss / categories.length) * 100) / 100;
       for (const category of categories) {
         categoryTotals.set(category, Math.round(((categoryTotals.get(category) || 0) + share) * 100) / 100);
         if (inLastWeek) {
@@ -257,13 +260,13 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
           );
         }
       }
+
+      if (inLastWeek) {
+        addToSkuTotals(skuTotals, lines, loss);
+      }
     }
 
     if (loss <= 0.01) continue;
-
-    if (inLastWeek) {
-      addToSkuTotals(skuTotals, lines, loss);
-    }
 
     entries.push({
       taskId: row.TaskID,

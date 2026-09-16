@@ -209,15 +209,11 @@ main {
   border-radius: 999px;
 }
 
-.category-bar-gain { background: var(--done); }
-
 .category-amount {
   text-align: right;
   color: var(--loss);
   font-variant-numeric: tabular-nums;
 }
-
-.category-amount-gain { color: var(--done); }
 
 .badge {
   display: inline-block;

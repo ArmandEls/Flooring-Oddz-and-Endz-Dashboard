@@ -69,12 +69,17 @@ Cin7 Core doesn't have a single "loss" field — it's derived:
   "Stock on Hand". A negative amount means inventory was written down (a
   loss); positive means stock was added/corrected up (a gain).
 - The headline total is the sum of the loss side only, across the window.
+  `totalGain`/`netAmount` (gain side, and loss-minus-gain) are also computed
+  and available via the API, but aren't shown as a category-level split —
+  see below for why.
 - To get a category for each stock take, we look up the products involved
-  (`Category` lives on the Product record, not the adjustment). **Every**
-  stock take — loss or gain — feeds into its category's running total, so a
-  later gain on the same category pulls that category's number back down
-  instead of losses only ever accumulating. A category can end up negative,
-  meaning it's net *up* over the window.
+  (`Category` lives on the Product record, not the adjustment). The category
+  breakdown is built from the same gross loss figure as the "Loss" column in
+  the table below it, on purpose: summing "By category" equals summing that
+  table. An earlier version netted each category against any gains booked
+  against it, which seemed useful but broke that reconciliation — worse, a
+  stock take whose gain nearly offset its own loss got little or no category
+  credit even though it still showed a real loss in the table.
 - "Worst SKUs this week" splits each loss (last 7 days only) evenly across
   the specific SKUs that stock take counted, using the SKU/product name
   already present on the stock take's line items (no extra API calls).
