@@ -13,7 +13,7 @@ let tasks = [];
 let draggedId = null;
 
 function fmtMoney(n) {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(n);
+  return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(n);
 }
 
 function fmtRelativeTime(iso) {
