@@ -82,11 +82,22 @@ Cin7 Core doesn't have a single "loss" field — it's derived:
   each line item. The breakdown is built from the same gross loss figure as
   the "Loss" column in the table below it, on purpose: summing "By state"
   equals summing that table.
+- Cin7 only gives a total $ loss per stock take, not a per-line dollar
+  value, so splitting that total across states/products is necessarily an
+  approximation. It's weighted by **line count**, not split evenly: a
+  state's share of a stock take's loss is `loss × (that state's line count /
+  total line count)`, and within a state, its share is split evenly across
+  its own lines. This matters — an earlier version split evenly *per state
+  touched*, which meant a 45-line stock take with 44 Perth lines and 1
+  Melbourne line gave Melbourne 50% of the loss (since 2 states were
+  touched), dumping the whole amount onto that one Melbourne product
+  regardless of whether it actually moved. Line-count weighting means that
+  state now correctly gets ~2% instead. Still treat per-product amounts
+  (here and in "Worst SKUs") as "which products/states keep showing up in
+  loss-making counts, roughly how much," not exact per-SKU accounting.
 - "Worst SKUs this week" splits each loss (last 7 days only) evenly across
   the specific SKUs that stock take counted, using the SKU/product name
   already present on the stock take's line items (no extra API calls).
-  Since one stock take often covers many SKUs at once, treat this as "which
-  SKUs keep showing up in loss-making counts," not exact per-SKU accounting.
 - Results are cached for 15 minutes; use the Refresh button for an
   on-demand update. There's a generous safety ceiling (600 stock takes) on
   how many get scanned per refresh — the panel will note if results are

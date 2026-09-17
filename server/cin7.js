@@ -233,16 +233,25 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
 
     // Location totals are built from the same gross loss figure shown per
     // stock take in the entries list below, so the two reconcile exactly —
-    // summing "By state" equals summing the "Loss" column. The loss is
-    // split first across the states a stock take touched, then — within
-    // each state's share — across the specific products at that state, so
-    // "which products is this state's loss coming from" stays accurate for
-    // stock takes that span more than one state.
+    // summing "By state" equals summing the "Loss" column.
+    //
+    // A stock take's loss is split across the states it touched WEIGHTED BY
+    // LINE COUNT, not evenly per state. Splitting evenly is a real bug we
+    // hit in practice: a 45-line stock take with 44 Perth lines and 1
+    // Melbourne line would give Melbourne 50% of the loss (since 2 states
+    // were touched), dumping the whole amount onto that one Melbourne
+    // product regardless of whether it actually moved. Weighting by line
+    // count means a state with 1 of 45 lines gets ~2% of the loss, not 50%.
+    // It's still an approximation (we don't have a per-line dollar value,
+    // only a per-stock-take total), but it no longer produces numbers that
+    // are off by an order of magnitude for lopsided multi-state counts.
     if (loss > 0.01) {
       const stateGroups = groupLinesByState(lines);
       locations = [...stateGroups.keys()];
-      const share = Math.round((loss / locations.length) * 100) / 100;
+      const totalLineCount = lines.length || locations.length;
       for (const [state, stateLines] of stateGroups) {
+        const weight = stateLines.length || 1;
+        const share = Math.round((loss * (weight / totalLineCount)) * 100) / 100;
         locationTotals.set(state, Math.round(((locationTotals.get(state) || 0) + share) * 100) / 100);
         if (inLastWeek) {
           weeklyLocationTotals.set(
