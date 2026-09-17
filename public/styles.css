@@ -215,6 +215,37 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+.category-row-wrap { margin-bottom: 2px; }
+
+.category-row-toggle {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 3px 4px;
+  margin: 0 -4px;
+}
+
+.category-row-toggle:hover { background: rgba(37, 99, 235, 0.06); }
+
+.state-products {
+  margin: 2px 0 6px 18px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.state-product-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.state-product-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.state-product-amount { color: var(--loss); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
 .badge {
   display: inline-block;
   font-size: 10px;

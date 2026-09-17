@@ -13,6 +13,7 @@ const MAX_RETRIES = 5;
 const MAX_LOOKBACK_DAYS = 60; // never look back more than 2 months
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const WORST_SKUS_LIMIT = 8;
+const STATE_PRODUCTS_LIMIT = 8;
 const OTHER_STATE = 'Other';
 
 function sleep(ms) {
@@ -98,19 +99,27 @@ function stateForLocationName(name) {
   return OTHER_STATE;
 }
 
-// Location is already present on every line item — no extra API call needed
-// (unlike product category, which lives on the Product record).
-function statesForLines(lines) {
-  const states = new Set(lines.map((l) => stateForLocationName(l.Location)));
-  return states.size ? [...states] : [OTHER_STATE];
+// Groups line items by state, so a stock take's loss can be split first
+// across the states it touched, then across the specific products at each
+// state — rather than splitting evenly across every line regardless of
+// which state it belongs to.
+function groupLinesByState(lines) {
+  const groups = new Map();
+  for (const line of lines) {
+    const state = stateForLocationName(line.Location);
+    if (!groups.has(state)) groups.set(state, []);
+    groups.get(state).push(line);
+  }
+  if (groups.size === 0) groups.set(OTHER_STATE, []);
+  return groups;
 }
 
 // SKU/ProductName are already present on each line item in the detail
-// response, so highlighting the worst SKUs needs no extra API calls — just
-// split the entry's loss evenly across the products it touched.
-function addToSkuTotals(skuTotals, lines, lossAmount) {
+// response, so attributing loss to products needs no extra API calls — just
+// split the given amount evenly across the products in `lines`.
+function addToSkuTotals(skuTotals, lines, amount) {
   if (lines.length === 0) return;
-  const share = lossAmount / lines.length;
+  const share = amount / lines.length;
   for (const line of lines) {
     const sku = line.SKU || line.ProductID || 'Unknown';
     const existing = skuTotals.get(sku);
@@ -148,6 +157,7 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
       netAmount: 0,
       entries: [],
       locationTotals: [],
+      stateProducts: [],
       worstSkusThisWeek: [],
       weeklyLoss: 0,
       weeklyGain: 0,
@@ -192,6 +202,7 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
   const entries = [];
   const locationTotals = new Map();
   const weeklyLocationTotals = new Map();
+  const stateProductTotals = new Map(); // state -> Map<sku, {sku, productName, amount}>
   const skuTotals = new Map();
   let totalLoss = 0;
   let totalGain = 0;
@@ -222,11 +233,16 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
 
     // Location totals are built from the same gross loss figure shown per
     // stock take in the entries list below, so the two reconcile exactly —
-    // summing "By state" equals summing the "Loss" column.
+    // summing "By state" equals summing the "Loss" column. The loss is
+    // split first across the states a stock take touched, then — within
+    // each state's share — across the specific products at that state, so
+    // "which products is this state's loss coming from" stays accurate for
+    // stock takes that span more than one state.
     if (loss > 0.01) {
-      locations = statesForLines(lines);
+      const stateGroups = groupLinesByState(lines);
+      locations = [...stateGroups.keys()];
       const share = Math.round((loss / locations.length) * 100) / 100;
-      for (const state of locations) {
+      for (const [state, stateLines] of stateGroups) {
         locationTotals.set(state, Math.round(((locationTotals.get(state) || 0) + share) * 100) / 100);
         if (inLastWeek) {
           weeklyLocationTotals.set(
@@ -234,6 +250,9 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
             Math.round(((weeklyLocationTotals.get(state) || 0) + share) * 100) / 100
           );
         }
+
+        if (!stateProductTotals.has(state)) stateProductTotals.set(state, new Map());
+        addToSkuTotals(stateProductTotals.get(state), stateLines, share);
       }
 
       if (inLastWeek) {
@@ -275,6 +294,19 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
     .sort((a, b) => b.amount - a.amount)
     .slice(0, WORST_SKUS_LIMIT);
 
+  // Which products each state's loss total is actually made up of, over the
+  // same window as locationTotals — capped per state since a state can
+  // accumulate many distinct products over 60 days.
+  const stateProducts = [...stateProductTotals.entries()]
+    .map(([state, skuMap]) => ({
+      state,
+      products: [...skuMap.values()]
+        .map((s) => ({ ...s, amount: Math.round(s.amount * 100) / 100 }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, STATE_PRODUCTS_LIMIT),
+    }))
+    .sort((a, b) => (locationTotals.get(b.state) || 0) - (locationTotals.get(a.state) || 0));
+
   console.log(
     `[cin7] stock-losses scan complete: loss $${totalLoss}, gain $${totalGain}, net $${netAmount} across ${toFetch.length} stock take numbers (${entries.length} were losses)`
   );
@@ -285,6 +317,7 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
     netAmount,
     entries,
     locationTotals: locationTotalsSorted,
+    stateProducts,
     worstSkusThisWeek,
     weeklyLoss,
     weeklyGain,

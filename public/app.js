@@ -11,6 +11,8 @@ const lossesBody = document.getElementById('losses-body');
 const refreshLossesBtn = document.getElementById('refresh-losses');
 
 let tasks = [];
+let lastLossesData = null;
+const expandedStates = new Set();
 let draggedId = null;
 
 function fmtMoney(n) {
@@ -236,6 +238,7 @@ async function loadLosses(force) {
 }
 
 function renderLosses(data) {
+  lastLossesData = data;
   refreshLossesBtn.textContent = data.relayed ? 'Check for update' : 'Refresh';
 
   if (!data.configured) {
@@ -277,16 +280,37 @@ function renderLosses(data) {
 
   // Gross loss per state — same basis as the "Loss" column in the table
   // below, so the two reconcile: summing this list equals summing the table.
+  // Each row is clickable to reveal which products that state's total is
+  // actually made up of.
   const maxLocationAmount = Math.max(1, ...(data.locationTotals || []).map((c) => c.amount));
+  const stateProductsMap = new Map((data.stateProducts || []).map((sp) => [sp.state, sp.products]));
   const categoryRows = (data.locationTotals || [])
     .map((c) => {
+      const isExpanded = expandedStates.has(c.state);
+      const products = stateProductsMap.get(c.state) || [];
+      const productRows = products
+        .map(
+          (p) => `
+          <div class="state-product-row">
+            <span class="state-product-name">${escapeHtml(p.productName)}</span>
+            <span class="state-product-amount">${fmtMoney(p.amount)}</span>
+          </div>`
+        )
+        .join('');
+      const productsBlock = isExpanded
+        ? `<div class="state-products">${products.length ? productRows : '<p class="muted">No product detail available.</p>'}</div>`
+        : '';
+
       return `
-      <div class="category-row">
-        <span class="category-name">${escapeHtml(c.state)}</span>
-        <span class="category-bar-track">
-          <span class="category-bar" style="width:${Math.max(4, (c.amount / maxLocationAmount) * 100)}%"></span>
-        </span>
-        <span class="category-amount">${fmtMoney(c.amount)}</span>
+      <div class="category-row-wrap">
+        <div class="category-row category-row-toggle" data-toggle-state="${escapeHtml(c.state)}">
+          <span class="category-name">${isExpanded ? '▾' : '▸'} ${escapeHtml(c.state)}</span>
+          <span class="category-bar-track">
+            <span class="category-bar" style="width:${Math.max(4, (c.amount / maxLocationAmount) * 100)}%"></span>
+          </span>
+          <span class="category-amount">${fmtMoney(c.amount)}</span>
+        </div>
+        ${productsBlock}
       </div>`;
     })
     .join('');
@@ -294,7 +318,7 @@ function renderLosses(data) {
   const categoryBlock = data.locationTotals && data.locationTotals.length
     ? `
       <div class="category-breakdown">
-        <h3>By state</h3>
+        <h3>By state <span class="muted" style="text-transform:none;letter-spacing:normal;">(click a state to see its products)</span></h3>
         ${categoryRows}
       </div>`
     : '';
@@ -330,6 +354,15 @@ function renderLosses(data) {
     ${categoryBlock}
     ${table}
   `;
+
+  lossesBody.querySelectorAll('[data-toggle-state]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const state = el.dataset.toggleState;
+      if (expandedStates.has(state)) expandedStates.delete(state);
+      else expandedStates.add(state);
+      renderLosses(lastLossesData);
+    });
+  });
 }
 
 refreshLossesBtn.addEventListener('click', () => loadLosses(true));
