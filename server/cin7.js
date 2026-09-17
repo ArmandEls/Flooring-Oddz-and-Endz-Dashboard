@@ -12,8 +12,8 @@ const REQUEST_SPACING_MS = 1000;
 const MAX_RETRIES = 5;
 const MAX_LOOKBACK_DAYS = 60; // never look back more than 2 months
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const WORST_SKUS_LIMIT = 8;
-const STATE_PRODUCTS_LIMIT = 8;
+const WORST_SKUS_LIMIT = 2;
+const STATE_PRODUCTS_LIMIT = 2;
 const OTHER_STATE = 'Other';
 
 function sleep(ms) {
