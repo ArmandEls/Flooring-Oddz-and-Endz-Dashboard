@@ -99,6 +99,32 @@ function stateForLocationName(name) {
   return OTHER_STATE;
 }
 
+// A line's QuantityOnHand (the book quantity before this stock take) versus
+// Adjustment (the new counted quantity) tells us whether THIS SPECIFIC
+// product went down or up — a stock take can easily count one product down
+// while counting another up in the same batch. New stock lines have no
+// "before" value (there's nothing to compare — adding brand-new stock is
+// never a loss).
+function lineDirection(line) {
+  if (line.QuantityOnHand === undefined || line.QuantityOnHand === null) return 'gain';
+  const before = Number(line.QuantityOnHand);
+  const after = Number(line.Adjustment);
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return 'none';
+  if (after < before) return 'loss';
+  if (after > before) return 'gain';
+  return 'none';
+}
+
+// Restricts to only the lines that actually decreased, so a product that
+// was counted UP in a stock take that was a net loss overall doesn't get
+// blamed for part of that loss. Falls back to every line if none of them
+// show a clear decrease (e.g. missing quantity fields) — better to spread
+// across everything touched than to attribute nothing at all.
+function linesThatLost(lines) {
+  const decreased = lines.filter((l) => lineDirection(l) === 'loss');
+  return decreased.length ? decreased : lines;
+}
+
 // Groups line items by state, so a stock take's loss can be split first
 // across the states it touched, then across the specific products at each
 // state — rather than splitting evenly across every line regardless of
@@ -235,20 +261,25 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
     // stock take in the entries list below, so the two reconcile exactly —
     // summing "By state" equals summing the "Loss" column.
     //
-    // A stock take's loss is split across the states it touched WEIGHTED BY
-    // LINE COUNT, not evenly per state. Splitting evenly is a real bug we
-    // hit in practice: a 45-line stock take with 44 Perth lines and 1
-    // Melbourne line would give Melbourne 50% of the loss (since 2 states
-    // were touched), dumping the whole amount onto that one Melbourne
-    // product regardless of whether it actually moved. Weighting by line
-    // count means a state with 1 of 45 lines gets ~2% of the loss, not 50%.
-    // It's still an approximation (we don't have a per-line dollar value,
-    // only a per-stock-take total), but it no longer produces numbers that
-    // are off by an order of magnitude for lopsided multi-state counts.
+    // Only lines that actually counted DOWN feed the split — a stock take
+    // can count one product down and another up at the same time (that's
+    // exactly what the separate gain transaction on the same stock take
+    // usually is), and a product counted up must not be blamed for part of
+    // the loss just because it was touched in the same batch.
+    //
+    // Among the loss lines, a stock take's loss is split across the states
+    // they're in WEIGHTED BY LINE COUNT, not evenly per state. Splitting
+    // evenly per state was a real bug we hit in practice: a 45-line stock
+    // take with 44 Perth loss-lines and 1 Melbourne line that hadn't even
+    // changed still gave Melbourne 50% of the loss (since 2 states were
+    // touched). This is still an approximation (we don't have a per-line
+    // dollar value, only a per-stock-take total), but it no longer blames
+    // products/states that didn't move, or moved the wrong way.
     if (loss > 0.01) {
-      const stateGroups = groupLinesByState(lines);
+      const lossLines = linesThatLost(lines);
+      const stateGroups = groupLinesByState(lossLines);
       locations = [...stateGroups.keys()];
-      const totalLineCount = lines.length || locations.length;
+      const totalLineCount = lossLines.length || locations.length;
       for (const [state, stateLines] of stateGroups) {
         const weight = stateLines.length || 1;
         const share = Math.round((loss * (weight / totalLineCount)) * 100) / 100;
@@ -265,7 +296,7 @@ async function fetchRecentStockLosses({ days = MAX_LOOKBACK_DAYS } = {}) {
       }
 
       if (inLastWeek) {
-        addToSkuTotals(skuTotals, lines, loss);
+        addToSkuTotals(skuTotals, lossLines, loss);
       }
     }
 

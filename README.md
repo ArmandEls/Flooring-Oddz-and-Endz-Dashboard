@@ -84,20 +84,32 @@ Cin7 Core doesn't have a single "loss" field — it's derived:
   equals summing that table.
 - Cin7 only gives a total $ loss per stock take, not a per-line dollar
   value, so splitting that total across states/products is necessarily an
-  approximation. It's weighted by **line count**, not split evenly: a
-  state's share of a stock take's loss is `loss × (that state's line count /
-  total line count)`, and within a state, its share is split evenly across
-  its own lines. This matters — an earlier version split evenly *per state
-  touched*, which meant a 45-line stock take with 44 Perth lines and 1
-  Melbourne line gave Melbourne 50% of the loss (since 2 states were
-  touched), dumping the whole amount onto that one Melbourne product
-  regardless of whether it actually moved. Line-count weighting means that
-  state now correctly gets ~2% instead. Still treat per-product amounts
-  (here and in "Worst SKUs") as "which products/states keep showing up in
-  loss-making counts, roughly how much," not exact per-SKU accounting.
-- "Worst SKUs this week" splits each loss (last 7 days only) evenly across
-  the specific SKUs that stock take counted, using the SKU/product name
-  already present on the stock take's line items (no extra API calls).
+  approximation — but two checks keep it honest:
+  1. **Direction first.** Each line carries `QuantityOnHand` (the book
+     quantity before this stock take) and `Adjustment` (the new counted
+     quantity) — comparing them (`lineDirection()` in `server/cin7.js`)
+     says whether *that specific product* went down or up. Only lines that
+     went down feed the loss split; a product counted up in the same batch
+     (which is usually exactly what a stock take's separate gain
+     transaction is) is never blamed for part of the loss. New stock lines
+     (no "before" value) are never loss lines either.
+  2. **Weighted by count, not split evenly.** Among the lines that did go
+     down, a state's share of the loss is `loss × (that state's loss-line
+     count / total loss-line count)`, and within a state, its share is
+     split evenly across its own loss-lines. Splitting evenly *per state
+     touched* was a real bug we hit in practice: a 45-line stock take with
+     44 Perth lines that decreased and 1 Melbourne line that hadn't even
+     changed still gave Melbourne 50% of the loss (since 2 states were
+     touched) — direction-filtering now excludes that Melbourne line
+     entirely, and Perth correctly takes the full amount.
+  Still treat per-product amounts (here and in "Worst SKUs") as "which
+  products/states keep showing up in loss-making counts, roughly how much,"
+  not exact per-SKU accounting — we don't have a real per-line dollar
+  value, only a per-stock-take total and a direction per line.
+- "Worst SKUs this week" applies the same direction filter, then splits
+  each loss (last 7 days only) evenly across the SKUs that actually counted
+  down, using the SKU/product name already present on the stock take's
+  line items (no extra API calls).
 - Results are cached for 15 minutes; use the Refresh button for an
   on-demand update. There's a generous safety ceiling (600 stock takes) on
   how many get scanned per refresh — the panel will note if results are
